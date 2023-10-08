@@ -5,18 +5,12 @@ import co.elastic.logstash.api.Context;
 import co.elastic.logstash.api.Input;
 import co.elastic.logstash.api.LogstashPlugin;
 import co.elastic.logstash.api.PluginConfigSpec;
-import org.apache.commons.lang3.StringUtils;
 import tech.ydb.core.grpc.GrpcTransport;
-import tech.ydb.topic.TopicClient;
-//import tech.ydb.topic.ReaderSettings;
-//import tech.ydb.topic.SyncReader;
 import tech.ydb.topic.TopicClient;
 import tech.ydb.topic.read.Message;
 import tech.ydb.topic.read.SyncReader;
 import tech.ydb.topic.settings.ReaderSettings;
 import tech.ydb.topic.settings.TopicReadSettings;
-//import tech.ydb.topic.TopicReadSettings;
-
 
 import java.util.Arrays;
 import java.util.Collection;
@@ -26,7 +20,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.function.Consumer;
 
 
-@LogstashPlugin(name="ydb_topics_input")
+@LogstashPlugin(name = "ydb_topics_input")
 public class YdbTopicsInput implements Input {
 
     public static final PluginConfigSpec<Long> EVENT_COUNT_CONFIG =
@@ -38,21 +32,26 @@ public class YdbTopicsInput implements Input {
     private final String id;
     private final CountDownLatch done = new CountDownLatch(1);
     private volatile boolean stopped;
+    private TopicClient topicClient;
 
-    private final SyncReader reader;
+    private SyncReader reader;
 
+
+    public void setTopicClient(TopicClient topicClient) {
+        this.topicClient = topicClient;
+    }
+
+    public void setReader(SyncReader reader) {
+        this.reader = reader;
+    }
 
     public YdbTopicsInput(String id, Configuration config, Context context) {
         this.id = id;
-        long count = config.get(EVENT_COUNT_CONFIG);
-        String prefix = config.get(PREFIX_CONFIG);
-
-        String topicPath = config.get(PluginConfigSpec.stringSetting("topic_path", "default_topic_path"));
+        String topicPath = config.get(PluginConfigSpec.stringSetting("topic_path"));
+        String connectionString = config.get(PluginConfigSpec.stringSetting("connection_string"));
 
         //инициализация TopicClient
-        TopicClient topicClient;
-        try (GrpcTransport transport = GrpcTransport.forConnectionString("connection_string")
-               // .withAuthProvider(CloudAuthHelper.getAuthProviderFromEnviron())
+        try (GrpcTransport transport = GrpcTransport.forConnectionString(connectionString)
                 .build()) {
             topicClient = TopicClient.newClient(transport).build();
         } catch (Exception e) {
@@ -108,4 +107,5 @@ public class YdbTopicsInput implements Input {
     public String getId() {
         return this.id;
     }
+
 }
