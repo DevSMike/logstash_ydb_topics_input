@@ -4,7 +4,7 @@
 
 ## Тестовая Конфигурация Input Плагина
 
-```json lines
+```
 input {
   ydb_topics_input {
     count => 3  # Количество сообщений для чтения
