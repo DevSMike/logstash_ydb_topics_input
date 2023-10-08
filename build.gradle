@@ -55,6 +55,8 @@ dependencies {
     implementation fileTree(dir: LOGSTASH_CORE_PATH, include: "**/logstash-core.jar")
 
     testImplementation 'junit:junit:4.12'
+    testImplementation 'org.mockito:mockito-core:3.12.4'
+
     testImplementation 'org.jruby:jruby-complete:9.2.20.1'
 }
 
