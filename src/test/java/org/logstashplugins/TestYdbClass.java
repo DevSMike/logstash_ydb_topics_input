@@ -12,7 +12,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
 
-public class YdbTopicsInputTest {
+public class TestYdbClass {
 
     @Test
     public void testYdbTopicsInputExample() {
