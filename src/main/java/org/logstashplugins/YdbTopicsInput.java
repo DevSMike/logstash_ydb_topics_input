@@ -6,6 +6,17 @@ import co.elastic.logstash.api.Input;
 import co.elastic.logstash.api.LogstashPlugin;
 import co.elastic.logstash.api.PluginConfigSpec;
 import org.apache.commons.lang3.StringUtils;
+import tech.ydb.core.grpc.GrpcTransport;
+import tech.ydb.topic.TopicClient;
+//import tech.ydb.topic.ReaderSettings;
+//import tech.ydb.topic.SyncReader;
+import tech.ydb.topic.TopicClient;
+import tech.ydb.topic.read.Message;
+import tech.ydb.topic.read.SyncReader;
+import tech.ydb.topic.settings.ReaderSettings;
+import tech.ydb.topic.settings.TopicReadSettings;
+//import tech.ydb.topic.TopicReadSettings;
+
 
 import java.util.Arrays;
 import java.util.Collection;
@@ -25,36 +36,62 @@ public class YdbTopicsInput implements Input {
             PluginConfigSpec.stringSetting("prefix", "message");
 
     private final String id;
-    private final long count;
-    private final String prefix;
     private final CountDownLatch done = new CountDownLatch(1);
     private volatile boolean stopped;
 
+    private final SyncReader reader;
+
+
     public YdbTopicsInput(String id, Configuration config, Context context) {
         this.id = id;
-        count = config.get(EVENT_COUNT_CONFIG);
-        prefix = config.get(PREFIX_CONFIG);
+        long count = config.get(EVENT_COUNT_CONFIG);
+        String prefix = config.get(PREFIX_CONFIG);
+
+        String topicPath = config.get(PluginConfigSpec.stringSetting("topic_path", "default_topic_path"));
+
+        //инициализация TopicClient
+        TopicClient topicClient;
+        try (GrpcTransport transport = GrpcTransport.forConnectionString("connection_string")
+               // .withAuthProvider(CloudAuthHelper.getAuthProviderFromEnviron())
+                .build()) {
+            topicClient = TopicClient.newClient(transport).build();
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to initialize YDB TopicClient", e);
+        }
+
+        ReaderSettings settings = ReaderSettings.newBuilder()
+                .setConsumerName("my-consumer")
+                .addTopic(TopicReadSettings.newBuilder()
+                        .setPath(topicPath)
+                        .build())
+                .build();
+
+        reader = topicClient.createSyncReader(settings);
     }
 
     @Override
     public void start(Consumer<Map<String, Object>> consumer) {
-
-        int eventCount = 0;
         try {
-            while (!stopped && eventCount < count) {
-                eventCount++;
-                consumer.accept(Collections.singletonMap("message",
-                        prefix + " " + StringUtils.center(eventCount + " of " + count, 20)));
+            while (!stopped) {
+                Message message = reader.receive(); // Чтение сообщения из топика
+                if (message != null) {
+                    Map<String, Object> logstashEvent = Collections.singletonMap("message", message.getData());
+                    consumer.accept(logstashEvent);
+                }
             }
+        } catch (InterruptedException e) {
+            throw new RuntimeException("Error while reading messages from YDB Topic", e);
         } finally {
             stopped = true;
             done.countDown();
         }
     }
 
+
     @Override
     public void stop() {
         stopped = true;
+        reader.shutdown();
     }
 
     @Override
