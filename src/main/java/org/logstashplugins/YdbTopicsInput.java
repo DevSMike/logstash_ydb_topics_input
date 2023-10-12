@@ -5,18 +5,13 @@ import co.elastic.logstash.api.Context;
 import co.elastic.logstash.api.Input;
 import co.elastic.logstash.api.LogstashPlugin;
 import co.elastic.logstash.api.PluginConfigSpec;
-import org.logstashplugins.util.MessageHandler;
+import org.logstashplugins.util.AsyncReaderCreator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import tech.ydb.core.grpc.GrpcTransport;
 import tech.ydb.topic.TopicClient;
 import tech.ydb.topic.read.AsyncReader;
-import tech.ydb.topic.settings.ReadEventHandlersSettings;
-import tech.ydb.topic.settings.ReaderSettings;
-import tech.ydb.topic.settings.TopicReadSettings;
 
-import java.time.Duration;
-import java.time.Instant;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Map;
@@ -67,7 +62,7 @@ public class YdbTopicsInput implements Input {
                 .build()) {
             topicClient = TopicClient.newClient(transport).build();
 
-            reader = createAsyncReader(consumer);
+            reader = AsyncReaderCreator.createAsyncReader(consumer, topicPath, topicClient);
 
             reader.init()
                     .thenRun(() -> {
@@ -103,24 +98,5 @@ public class YdbTopicsInput implements Input {
     public String getId() {
         return this.id;
     }
-
-    public AsyncReader createAsyncReader(Consumer<Map<String, Object>> consumer) {
-
-        ReaderSettings settings = ReaderSettings.newBuilder()
-                .setConsumerName("my-consumer")
-                .addTopic(TopicReadSettings.newBuilder()
-                        .setPath(topicPath)
-                        .setReadFrom(Instant.now().minus(Duration.ofHours(24)))
-                        .setMaxLag(Duration.ofMinutes(30))
-                        .build())
-                .build();
-
-        ReadEventHandlersSettings handlerSettings = ReadEventHandlersSettings.newBuilder()
-                .setEventHandler(new MessageHandler(consumer))
-                .build();
-
-        return reader = topicClient.createAsyncReader(settings, handlerSettings);
-    }
-
 }
 
