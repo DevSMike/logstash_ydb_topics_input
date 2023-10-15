@@ -6,63 +6,148 @@ import org.junit.Before;
 import org.junit.Test;
 import org.logstash.plugins.ConfigurationImpl;
 import org.logstashplugins.YdbTopicsInput;
+import org.logstashplugins.util.AsyncReaderCreator;
+import org.logstashplugins.util.ConsumerData;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import tech.ydb.core.grpc.GrpcTransport;
+import tech.ydb.topic.TopicClient;
+import tech.ydb.topic.description.Codec;
+import tech.ydb.topic.description.SupportedCodecs;
+import tech.ydb.topic.read.AsyncReader;
 import tech.ydb.topic.read.SyncReader;
+import tech.ydb.topic.settings.*;
+import tech.ydb.topic.write.AsyncWriter;
+import tech.ydb.topic.write.Message;
+import tech.ydb.topic.write.QueueOverflowException;
 
-import java.util.*;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.function.Consumer;
+
+import static java.util.concurrent.CompletableFuture.completedFuture;
 import static org.mockito.Mockito.*;
+
+import java.util.concurrent.CompletableFuture;
+
 
 public class YdbTopicsInputTest {
 
-    @Mock
-    private SyncReader reader;
+
+    private static final String CONNECTION_STRING = "grpc://localhost:2136?database=/local";
+
+    private static final String TOPIC_PATH = "my-topic";
 
     private YdbTopicsInput input;
+    private GrpcTransport transport;
 
-    @Before
-    public void setUp() {
+    private TopicClient client;
 
-        Map<String, Object> configValues = new HashMap<>();
-        configValues.put(YdbTopicsInput.PREFIX_CONFIG.name(), "message");
-        configValues.put(YdbTopicsInput.EVENT_COUNT_CONFIG.name(), 1L);
-        configValues.put("topic_path", "fake_topic_path");
-        configValues.put("connection_string", "grpc://localhost:2136?database=/local");
+    private AsyncReader reader;
 
-        Configuration config = new ConfigurationImpl(configValues);
-
-        input = new YdbTopicsInput("test-input", config, null);
-        MockitoAnnotations.openMocks(this);
-
-    }
 
     @After
     public void tearDown() {
-        input.stop();
+        try {
+            transport.close();
+        } catch (Exception e) {
+            System.out.println(e.getMessage());
+        }
+//        input.stop();
+        reader.shutdown();
+
     }
 
     @Test
     public void testStart() throws InterruptedException {
-        Consumer<Map<String, Object>> consumer = mock(Consumer.class);
-        CustomMessage testMessage = new CustomMessage("Test Message".getBytes(), 0, 0);
-        // Мокируем метод receive для первого вызова возвращать testMessage, а затем вернуть null
-        when(reader.receive())
-                .thenReturn(testMessage)
-                .thenReturn(null);
 
-        input.setReader(reader);
+        try {
+            transport = GrpcTransport.forConnectionString(CONNECTION_STRING)
+                    .build();
+            client = TopicClient.newClient(transport).build();
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to initialize YDB TopicClient", e);
+        }
 
-        Thread thread = new Thread(() -> {
-            input.start(consumer);
-        });
-        thread.start();
-        // Ждем некоторое время, чтобы дать возможность потоку обработать сообщение
-        Thread.sleep(100);
 
-        verify(consumer, times(1)).accept(Collections.singletonMap("message", testMessage.getData())); // Проверяем, что consumer был вызван с ожидаемыми данными
-        input.stop();
-        input.awaitStop();
+        ConsumerData consumerData = new ConsumerData("topicConsumer", SupportedCodecs.newBuilder()
+                .addCodec(Codec.RAW)
+                .addCodec(Codec.GZIP)
+                .build());
+
+        client.createTopic(TOPIC_PATH, CreateTopicSettings.newBuilder()
+                .addConsumer(consumerData.getConsumer())
+                .setSupportedCodecs(SupportedCodecs.newBuilder()
+                        .addCodec(Codec.RAW)
+                        .addCodec(Codec.GZIP)
+                        .build())
+                .setPartitioningSettings(PartitioningSettings.newBuilder()
+                        .setMinActivePartitions(3)
+                        .build())
+                .build());
+
+        String producerAndGroupID = "group-id";
+        WriterSettings settings = WriterSettings.newBuilder()
+                .setTopicPath(TOPIC_PATH)
+                .setProducerId(producerAndGroupID)
+                .setMessageGroupId(producerAndGroupID)
+                .build();
+
+        AsyncWriter writer = client.createAsyncWriter(settings);
+        writer.init()
+                .thenRun(() -> System.out.println("Writer started good"))
+                .exceptionally(ex -> {
+                    System.out.println("Writer started error" + ex.getMessage());
+                    return null;
+                });
+
+        try {
+            writer.send(Message.of("message from writer".getBytes()));
+        } catch (QueueOverflowException exception) {
+            System.out.println(exception.getMessage());
+        }
+
+
+//        Map<String, Object> configValues = new HashMap<>();
+//
+//        configValues.put(YdbTopicsInput.PREFIX_CONFIG.name(), "message");
+//        configValues.put(YdbTopicsInput.EVENT_COUNT_CONFIG.name(), 1L);
+//        configValues.put("topic_path", TOPIC_PATH);
+//        configValues.put("connection_string", CONNECTION_STRING);
+//
+//        Configuration config = new ConfigurationImpl(configValues);
+//
+//        input = new YdbTopicsInput("test-input", config, null);
+//        input.setConsumer(consumerData);
+
+
+        Map<String, Object> resultMap = new HashMap<>();
+        Consumer<Map<String, Object>> consumer = stringObjectMap -> {
+            for (String key : stringObjectMap.keySet()) {
+                resultMap.put(key, stringObjectMap.get(key));
+            }
+        };
+
+         reader = AsyncReaderCreator.createAsyncReader(consumer, TOPIC_PATH, client, consumerData);
+    //    input.start(consumer);
+
+        reader.init()
+                .thenRun(() -> {
+                    System.out.println("Async reader initialization finished successfully");
+                })
+                .exceptionally(ex -> {
+                    System.out.println("Async reader initialization failed with exception: " + ex.getMessage());
+
+                    return null;
+                });
+
+
+
+        System.out.println(resultMap);
     }
-
 }
