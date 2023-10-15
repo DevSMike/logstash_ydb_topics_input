@@ -6,6 +6,7 @@ import co.elastic.logstash.api.Input;
 import co.elastic.logstash.api.LogstashPlugin;
 import co.elastic.logstash.api.PluginConfigSpec;
 import org.logstashplugins.util.AsyncReaderCreator;
+import org.logstashplugins.util.ConsumerData;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import tech.ydb.core.grpc.GrpcTransport;
@@ -18,10 +19,8 @@ import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.function.Consumer;
 
-
 @LogstashPlugin(name = "ydb_topics_input")
 public class YdbTopicsInput implements Input {
-
 
     public static final PluginConfigSpec<Long> EVENT_COUNT_CONFIG =
             PluginConfigSpec.numSetting("count", 3);
@@ -37,9 +36,13 @@ public class YdbTopicsInput implements Input {
     private final CountDownLatch done = new CountDownLatch(1);
     private volatile boolean stopped;
     private TopicClient topicClient;
-
     private AsyncReader reader;
+    private GrpcTransport transport; // Добавляем поле для транспорта
+    private ConsumerData consumerData;
 
+    public void setConsumer(ConsumerData consumer) {
+        consumerData = consumer;
+    }
 
     public void setTopicClient(TopicClient topicClient) {
         this.topicClient = topicClient;
@@ -57,22 +60,27 @@ public class YdbTopicsInput implements Input {
 
     @Override
     public void start(Consumer<Map<String, Object>> consumer) {
-        //инициализация TopicClient
-        try (GrpcTransport transport = GrpcTransport.forConnectionString(connectionString)
-                .build()) {
+        // Открываем транспорт в методе initialize
+        initialize();
+
+        reader = AsyncReaderCreator.createAsyncReader(consumer, topicPath, topicClient, consumerData);
+
+        reader.init()
+                .thenRun(() -> {
+                    logger.info("Async reader initialization finished successfully");
+                })
+                .exceptionally(ex -> {
+                    logger.error("Async reader initialization failed with exception: ", ex);
+                    return null;
+                });
+    }
+
+    // Метод для инициализации транспорта
+    private void initialize() {
+        try {
+            transport = GrpcTransport.forConnectionString(connectionString)
+                    .build();
             topicClient = TopicClient.newClient(transport).build();
-
-            reader = AsyncReaderCreator.createAsyncReader(consumer, topicPath, topicClient);
-
-            reader.init()
-                    .thenRun(() -> {
-                        logger.info("Async reader initialization finished successfully");
-                    })
-                    .exceptionally(ex -> {
-                        logger.error("Async reader initialization failed with exception: ", ex);
-                        return null;
-                    });
-
         } catch (Exception e) {
             throw new RuntimeException("Failed to initialize YDB TopicClient", e);
         }
@@ -82,6 +90,19 @@ public class YdbTopicsInput implements Input {
     public void stop() {
         stopped = true;
         reader.shutdown();
+        // Закрываем транспорт в методе stop
+        closeTransport();
+    }
+
+    // Метод для закрытия транспорта
+    private void closeTransport() {
+        if (transport != null) {
+            try {
+                transport.close();
+            } catch (Exception e) {
+                logger.error("Failed to close the GrpcTransport", e);
+            }
+        }
     }
 
     @Override
@@ -99,4 +120,3 @@ public class YdbTopicsInput implements Input {
         return this.id;
     }
 }
-

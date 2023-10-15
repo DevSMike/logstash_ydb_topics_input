@@ -13,10 +13,11 @@ import java.util.function.Consumer;
 
 public class AsyncReaderCreator {
 
-    public static AsyncReader createAsyncReader(Consumer<Map<String, Object>> consumer, String topicPath, TopicClient topicClient) {
+    public static AsyncReader createAsyncReader(Consumer<Map<String, Object>> consumer, String topicPath,
+                                                TopicClient topicClient, ConsumerData consumerData) {
 
         ReaderSettings settings = ReaderSettings.newBuilder()
-                .setConsumerName("my-consumer")
+                .setConsumerName(consumerData.getConsumerName())
                 .addTopic(TopicReadSettings.newBuilder()
                         .setPath(topicPath)
                         .setReadFrom(Instant.now().minus(Duration.ofHours(24)))
