@@ -11,6 +11,7 @@ import java.time.Instant;
 import java.util.Map;
 import java.util.function.Consumer;
 
+//LEGACY
 public class AsyncReaderCreator {
 
     public static AsyncReader createAsyncReader(Consumer<Map<String, Object>> consumer, String topicPath,
