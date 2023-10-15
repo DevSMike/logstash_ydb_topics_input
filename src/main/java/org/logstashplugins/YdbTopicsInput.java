@@ -5,20 +5,29 @@ import co.elastic.logstash.api.Context;
 import co.elastic.logstash.api.Input;
 import co.elastic.logstash.api.LogstashPlugin;
 import co.elastic.logstash.api.PluginConfigSpec;
-import org.logstashplugins.util.AsyncReaderCreator;
 import org.logstashplugins.util.ConsumerData;
+import org.logstashplugins.util.MessageHandler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import tech.ydb.core.grpc.GrpcTransport;
 import tech.ydb.topic.TopicClient;
 import tech.ydb.topic.read.AsyncReader;
+import tech.ydb.topic.settings.ReadEventHandlersSettings;
+import tech.ydb.topic.settings.ReaderSettings;
+import tech.ydb.topic.settings.TopicReadSettings;
 
+import java.time.Duration;
+import java.time.Instant;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.function.Consumer;
 
+/**
+ * @author Mikhail Lukashev
+ */
 @LogstashPlugin(name = "ydb_topics_input")
 public class YdbTopicsInput implements Input {
 
@@ -34,18 +43,15 @@ public class YdbTopicsInput implements Input {
     private final String connectionString;
     private final String id;
     private final CountDownLatch done = new CountDownLatch(1);
-    private volatile boolean stopped;
+
     private TopicClient topicClient;
     private AsyncReader reader;
-    private GrpcTransport transport; // Добавляем поле для транспорта
+    private GrpcTransport transport;
     private ConsumerData consumerData;
+
 
     public void setConsumer(ConsumerData consumer) {
         consumerData = consumer;
-    }
-
-    public void setTopicClient(TopicClient topicClient) {
-        this.topicClient = topicClient;
     }
 
     public void setReader(AsyncReader reader) {
@@ -63,19 +69,36 @@ public class YdbTopicsInput implements Input {
         // Открываем транспорт в методе initialize
         initialize();
 
-        reader = AsyncReaderCreator.createAsyncReader(consumer, topicPath, topicClient, consumerData);
+        ReaderSettings settings = ReaderSettings.newBuilder()
+                .setConsumerName(consumerData.getConsumerName())
+                .addTopic(TopicReadSettings.newBuilder()
+                        .setPath(topicPath)
+                        .setReadFrom(Instant.now().minus(Duration.ofHours(24)))
+                        .setMaxLag(Duration.ofMinutes(30))
+                        .build())
+                .build();
 
-        reader.init()
-                .thenRun(() -> {
-                    logger.info("Async reader initialization finished successfully");
-                })
-                .exceptionally(ex -> {
-                    logger.error("Async reader initialization failed with exception: ", ex);
-                    return null;
-                });
+        ReadEventHandlersSettings handlerSettings = ReadEventHandlersSettings.newBuilder()
+                .setEventHandler(new MessageHandler(consumer))
+                .build();
+
+        CompletableFuture<Void> initializationFuture = CompletableFuture.runAsync(() -> {
+            reader = topicClient.createAsyncReader(settings, handlerSettings);
+            reader.init()
+                    .thenRun(() -> {
+                        logger.info("Async reader initialization finished successfully");
+                    })
+                    .exceptionally(ex -> {
+                        logger.error("Async reader initialization failed with exception: ", ex);
+                        return null;
+                    });
+        });
+
+        // Ожидаем завершения инициализации
+        initializationFuture.join();
     }
 
-    // Метод для инициализации транспорта
+     //Метод для инициализации транспорта
     private void initialize() {
         try {
             transport = GrpcTransport.forConnectionString(connectionString)
@@ -88,21 +111,14 @@ public class YdbTopicsInput implements Input {
 
     @Override
     public void stop() {
-        stopped = true;
         reader.shutdown();
-        // Закрываем транспорт в методе stop
         closeTransport();
+        done.countDown();
     }
 
     // Метод для закрытия транспорта
     private void closeTransport() {
-        if (transport != null) {
-            try {
-                transport.close();
-            } catch (Exception e) {
-                logger.error("Failed to close the GrpcTransport", e);
-            }
-        }
+        transport.close();
     }
 
     @Override
