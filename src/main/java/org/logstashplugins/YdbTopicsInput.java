@@ -35,7 +35,6 @@ public class YdbTopicsInput implements Input {
 
     private final String topicPath;
     private final String connectionString;
-
     private final String id;
     private final CountDownLatch done = new CountDownLatch(1);
     private final String consumerName;
