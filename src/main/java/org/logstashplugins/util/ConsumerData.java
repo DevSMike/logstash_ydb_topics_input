@@ -1,5 +1,6 @@
 package org.logstashplugins.util;
 
+import tech.ydb.topic.description.Codec;
 import tech.ydb.topic.description.Consumer;
 import tech.ydb.topic.description.SupportedCodecs;
 
@@ -15,6 +16,12 @@ public class ConsumerData {
                 .build();
     }
 
+    public static ConsumerData createDefaultConsumer() {
+        return new ConsumerData("DefaultConsumer", SupportedCodecs.newBuilder()
+                .addCodec(Codec.RAW)
+                .addCodec(Codec.GZIP)
+                .build());
+    }
     public String getConsumerName() {
         return consumer.getName();
     }
