@@ -24,14 +24,9 @@ public class MessageHandler extends AbstractReadEventHandler {
         for (Message message : event.getMessages()) {
             logger.info("Message received. SeqNo={}, offset={}", message.getSeqNo(), message.getOffset());
 
-            // Logstash-совместимое событие
             Map<String, Object> logstashEvent = Collections.singletonMap("message", new String(message.getData()));
 
             consumer.accept(logstashEvent);
-
-            message.commit().thenRun(() -> {
-                logger.info("Message committed");
-            });
         }
     }
 }
