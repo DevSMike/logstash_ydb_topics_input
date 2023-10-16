@@ -41,6 +41,7 @@ public class YdbTopicsInput implements Input {
     private TopicClient topicClient;
     private AsyncReader reader;
     private GrpcTransport transport;
+    private volatile boolean stopped = false;
 
     public YdbTopicsInput(String id, Configuration config, Context context) {
         this.id = id;
@@ -85,6 +86,7 @@ public class YdbTopicsInput implements Input {
         reader.shutdown();
         closeTransport();
         done.countDown();
+        stopped = true;
     }
 
     private void closeTransport() {
@@ -104,5 +106,9 @@ public class YdbTopicsInput implements Input {
     @Override
     public String getId() {
         return this.id;
+    }
+
+    public boolean getIsStopped() {
+        return stopped;
     }
 }
