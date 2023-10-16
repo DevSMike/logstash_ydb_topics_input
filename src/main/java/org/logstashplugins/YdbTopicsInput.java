@@ -5,10 +5,7 @@ import co.elastic.logstash.api.Context;
 import co.elastic.logstash.api.Input;
 import co.elastic.logstash.api.LogstashPlugin;
 import co.elastic.logstash.api.PluginConfigSpec;
-import org.logstashplugins.util.ConsumerData;
 import org.logstashplugins.util.MessageHandler;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import tech.ydb.core.grpc.GrpcTransport;
 import tech.ydb.topic.TopicClient;
 import tech.ydb.topic.read.AsyncReader;
@@ -21,7 +18,6 @@ import java.time.Instant;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Map;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.function.Consumer;
 
@@ -37,40 +33,29 @@ public class YdbTopicsInput implements Input {
     public static final PluginConfigSpec<String> PREFIX_CONFIG =
             PluginConfigSpec.stringSetting("prefix", "message");
 
-    private final Logger logger = LoggerFactory.getLogger(YdbTopicsInput.class);
-
     private final String topicPath;
     private final String connectionString;
+
     private final String id;
     private final CountDownLatch done = new CountDownLatch(1);
-
+    private final String consumerName;
     private TopicClient topicClient;
     private AsyncReader reader;
     private GrpcTransport transport;
-    private ConsumerData consumerData;
-
-
-    public void setConsumer(ConsumerData consumer) {
-        consumerData = consumer;
-    }
-
-    public void setReader(AsyncReader reader) {
-        this.reader = reader;
-    }
 
     public YdbTopicsInput(String id, Configuration config, Context context) {
         this.id = id;
         topicPath = config.get(PluginConfigSpec.stringSetting("topic_path"));
         connectionString = config.get(PluginConfigSpec.stringSetting("connection_string"));
+        consumerName = config.get(PluginConfigSpec.stringSetting("consumer_name"));
     }
 
     @Override
     public void start(Consumer<Map<String, Object>> consumer) {
-        // Открываем транспорт в методе initialize
         initialize();
 
         ReaderSettings settings = ReaderSettings.newBuilder()
-                .setConsumerName(consumerData.getConsumerName())
+                .setConsumerName(consumerName)
                 .addTopic(TopicReadSettings.newBuilder()
                         .setPath(topicPath)
                         .setReadFrom(Instant.now().minus(Duration.ofHours(24)))
@@ -82,23 +67,10 @@ public class YdbTopicsInput implements Input {
                 .setEventHandler(new MessageHandler(consumer))
                 .build();
 
-        CompletableFuture<Void> initializationFuture = CompletableFuture.runAsync(() -> {
-            reader = topicClient.createAsyncReader(settings, handlerSettings);
-            reader.init()
-                    .thenRun(() -> {
-                        logger.info("Async reader initialization finished successfully");
-                    })
-                    .exceptionally(ex -> {
-                        logger.error("Async reader initialization failed with exception: ", ex);
-                        return null;
-                    });
-        });
-
-        // Ожидаем завершения инициализации
-        initializationFuture.join();
+        reader = topicClient.createAsyncReader(settings, handlerSettings);
+        reader.init().join();
     }
 
-     //Метод для инициализации транспорта
     private void initialize() {
         try {
             transport = GrpcTransport.forConnectionString(connectionString)
@@ -116,7 +88,6 @@ public class YdbTopicsInput implements Input {
         done.countDown();
     }
 
-    // Метод для закрытия транспорта
     private void closeTransport() {
         transport.close();
     }
