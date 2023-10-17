@@ -23,18 +23,26 @@ public class MessageHandlerTest {
 
     @Before
     public void setup() {
-        MockitoAnnotations.initMocks(this);
+        MockitoAnnotations.openMocks(this);
+    }
+
+    public Void printCommit() {
+        Runnable runnable = () -> System.out.println("Hello!");
+        runnable.run();
+        return null;
     }
 
     @Test
     public void testOnMessages() {
         MessageHandler messageHandler = new MessageHandler(consumer);
 
-        CustomMessage message = new CustomMessage("Test message data".getBytes(), 0,0);
-        CompletableFuture<Void> completedFuture = CompletableFuture.completedFuture(null);
+        CustomMessage message = new CustomMessage("Test message data".getBytes(), 0, 0);
+
+        CompletableFuture<Void> completedFuture = CompletableFuture.completedFuture(printCommit());
         Supplier<CompletableFuture<Void>> commitCallback = () -> completedFuture;
 
-        DataReceivedEvent dataReceivedEvent = new DataReceivedEventImpl(Collections.singletonList(message), null, commitCallback);
+        DataReceivedEvent dataReceivedEvent = new DataReceivedEventImpl(Collections.singletonList(message),
+                null, commitCallback);
 
         messageHandler.onMessages(dataReceivedEvent);
 
