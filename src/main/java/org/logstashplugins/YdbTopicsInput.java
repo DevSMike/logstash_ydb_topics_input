@@ -18,7 +18,6 @@ import java.time.Instant;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Map;
-import java.util.concurrent.CountDownLatch;
 import java.util.function.Consumer;
 
 /**
@@ -36,7 +35,6 @@ public class YdbTopicsInput implements Input {
     private final String topicPath;
     private final String connectionString;
     private final String id;
-    private final CountDownLatch done = new CountDownLatch(1);
     private final String consumerName;
     private TopicClient topicClient;
     private AsyncReader reader;
@@ -85,17 +83,16 @@ public class YdbTopicsInput implements Input {
     public void stop() {
         reader.shutdown();
         closeTransport();
-        done.countDown();
         stopped = true;
-    }
-
-    private void closeTransport() {
-        transport.close();
     }
 
     @Override
     public void awaitStop() throws InterruptedException {
-        done.await();
+
+    }
+
+    private void closeTransport() {
+        transport.close();
     }
 
     @Override
