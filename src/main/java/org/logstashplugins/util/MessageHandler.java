@@ -27,6 +27,8 @@ public class MessageHandler extends AbstractReadEventHandler {
             Map<String, Object> logstashEvent = Collections.singletonMap("message", new String(message.getData()));
 
             consumer.accept(logstashEvent);
+
+            message.commit().join();
         }
     }
 }
