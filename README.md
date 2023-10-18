@@ -17,7 +17,7 @@
   - ```./gradlew.bat ``` на Windows системах
 - Установить плагин соотвествующей командой: ```bin/logstash-plugin install --no-verify --local /path/to/javaPlugin.gem```
 - Использовать тестовую конфигурацию для запуска плагина командой ```bin/logstash -f /path/to/java_input.conf```
-## Тестовая Конфигурация Input Плагина
+## Тестовая Конфигурация Input Плагина (анонимная аутентификация)
 
 ```
 input {
@@ -27,6 +27,44 @@ input {
     topic_path => "topic_path"  
     connection_string => "grpc://localhost:2136?database=/local"
     consumer_name => "consumer_name"
+  }
+}
+
+output {
+  stdout { codec => rubydebug }  # Вывод в стандартный вывод с форматированием Ruby Debug
+}
+```
+
+## Тестовая Конфигурация Input Плагина (аутентификация по токену)
+
+```
+input {
+  ydb_topics_input {
+    count => 3  
+    prefix => "message"  
+    topic_path => "topic_path"  
+    connection_string => "grpc://localhost:2136?database=/local"
+    consumer_name => "consumer_name"
+    access_token => "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOi"
+  }
+}
+
+output {
+  stdout { codec => rubydebug }  # Вывод в стандартный вывод с форматированием Ruby Debug
+}
+```
+
+## Тестовая Конфигурация Input Плагина (аутентификация при помощи файла сервисного аккаунта)
+
+```
+input {
+  ydb_topics_input {
+    count => 3  
+    prefix => "message"  
+    topic_path => "topic_path"  
+    connection_string => "grpc://localhost:2136?database=/local"
+    consumer_name => "consumer_name"
+    service_account_key => "path/to/sa_file.json"
   }
 }
 
