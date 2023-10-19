@@ -33,10 +33,35 @@ public class MessageHandlerTest {
     }
 
     @Test
-    public void testOnMessages() {
-        MessageHandler messageHandler = new MessageHandler(consumer);
+    public void testOnMessagesBinary() {
+        String json = "{\n" +
+                "    \"name\": \"user\",\n" +
+                "    \"email\": \"user@user.com\"\n" +
+                "}";
+        MessageHandler messageHandler = new MessageHandler(consumer, "BINARY");
 
-        CustomMessage message = new CustomMessage("Test message data".getBytes(), 0, 0);
+        CustomMessage message = new CustomMessage(json.getBytes(), 0, 0);
+
+        CompletableFuture<Void> completedFuture = CompletableFuture.completedFuture(printCommit());
+        Supplier<CompletableFuture<Void>> commitCallback = () -> completedFuture;
+
+        DataReceivedEvent dataReceivedEvent = new DataReceivedEventImpl(Collections.singletonList(message),
+                null, commitCallback);
+
+        messageHandler.onMessages(dataReceivedEvent);
+
+        Mockito.verify(consumer, Mockito.times(1)).accept(Mockito.any());
+    }
+
+    @Test
+    public void testOnMessageJson() {
+        String json = "{\n" +
+                "    \"name\": \"user\",\n" +
+                "    \"email\": \"user@user.com\"\n" +
+                "}";
+        MessageHandler messageHandler = new MessageHandler(consumer, "JSON");
+
+        CustomMessage message = new CustomMessage(json.getBytes(), 0, 0);
 
         CompletableFuture<Void> completedFuture = CompletableFuture.completedFuture(printCommit());
         Supplier<CompletableFuture<Void>> commitCallback = () -> completedFuture;
