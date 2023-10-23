@@ -66,6 +66,8 @@ public class CustomMessage implements Message {
 
     @Override
     public CompletableFuture<Void> commit() {
-        return null;
+        CompletableFuture<Void> future = new CompletableFuture<>();
+        future.complete(null);
+        return future;
     }
 }
