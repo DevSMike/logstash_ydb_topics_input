@@ -7,6 +7,5 @@ import java.util.function.Consumer;
 
 @FunctionalInterface
 public interface MessageProcessor {
-
     Map<String, Object> process(Message message, Consumer<Map<String, Object>> consumer);
 }
