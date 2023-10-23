@@ -1,5 +1,6 @@
 package org.logstashplugins.util;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
@@ -11,54 +12,67 @@ import tech.ydb.topic.read.events.DataReceivedEvent;
 import java.io.IOException;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.function.Consumer;
-
+import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.function.Consumer;
 
 public class MessageHandler extends AbstractReadEventHandler {
     private final Logger logger = LoggerFactory.getLogger(MessageHandler.class);
     private final Consumer<Map<String, Object>> consumer;
-    private final String schema;
+    private final MessageProcessor messageProcessor;
 
     public MessageHandler(Consumer<Map<String, Object>> consumer, String schema) {
         this.consumer = consumer;
-        this.schema = schema;
+
+        if (schema.equals("JSON")) {
+            messageProcessor = this::processJsonMessage;
+        } else {
+            messageProcessor = this::processNonJsonMessage;
+        }
     }
 
     @Override
     public void onMessages(DataReceivedEvent event) {
-        MessageProcessor messageProcessor;
-
-        if (schema.equals("JSON")) {
-            messageProcessor = (message, consumer) -> {
-                try {
-                    ObjectMapper objectMapper = new ObjectMapper();
-                    JsonNode jsonNode = objectMapper.readTree(new String(message.getData()));
-                    Map<String, Object> logstashEvent = new HashMap<>();
-                    jsonNode.fields().forEachRemaining(entry -> logstashEvent.put(entry.getKey(), entry.getValue().asText()));
-                    consumer.accept(logstashEvent);
-                    message.commit().join();
-                } catch (IOException e) {
-                    logger.error("Error parsing JSON: {}", e.getMessage());
-                }
-            };
-        } else {
-            messageProcessor = (message, consumer) -> {
-                Map<String, Object> logstashEvent = Collections.singletonMap("message", new String(message.getData()));
-                consumer.accept(logstashEvent);
-                message.commit().join();
-            };
-        }
-
         for (Message message : event.getMessages()) {
             logger.info("Message received. SeqNo={}, offset={}", message.getSeqNo(), message.getOffset());
-            messageProcessor.process(message, consumer);
+            Map<String, Object> logstashEvent = messageProcessor.process(message, consumer);
+            consumer.accept(logstashEvent);
+            message.commit().join();
         }
     }
-}
 
+    private Map<String, Object> processJsonMessage(Message message, Consumer<Map<String, Object>> consumer) {
+        Map<String, Object> logstashEvent = new HashMap<>();
+        try {
+            ObjectMapper objectMapper = new ObjectMapper();
+            JsonNode jsonNode = objectMapper.readTree(new String(message.getData()));
+            parseJson(jsonNode, logstashEvent, objectMapper);
+        } catch (IOException e) {
+            logger.error("Error parsing JSON: {}", e.getMessage());
+        }
+        return logstashEvent;
+    }
 
-@FunctionalInterface
-interface MessageProcessor {
-    void process(Message message, Consumer<Map<String, Object>> consumer);
+    private Map<String, Object> processNonJsonMessage(Message message, Consumer<Map<String, Object>> consumer) {
+        return Collections.singletonMap("message", new String(message.getData()));
+    }
+
+    private void parseJson(JsonNode jsonNode, Map<String, Object> result, ObjectMapper objectMapper) {
+        if (jsonNode.isObject()) {
+            Map<String, Object> nestedMap = new LinkedHashMap<>();
+            jsonNode.fields().forEachRemaining(entry -> {
+                if (entry.getValue().isObject() || entry.getValue().isArray()) {
+                    try {
+                        String jsonStr = objectMapper.writeValueAsString(entry.getValue());
+                        nestedMap.put(entry.getKey(), jsonStr);
+                    } catch (JsonProcessingException e) {
+                        e.printStackTrace();
+                    }
+                } else {
+                    nestedMap.put(entry.getKey(), entry.getValue().asText());
+                }
+            });
+            result.putAll(nestedMap);
+        }
+    }
 }
