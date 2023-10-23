@@ -55,10 +55,7 @@ public class MessageHandlerTest {
 
     @Test
     public void testOnMessageJson() {
-        String json = "{\n" +
-                "    \"name\": \"user\",\n" +
-                "    \"email\": \"user@user.com\"\n" +
-                "}";
+        String json = " { \"name\": \"example\", \"meta\": { \"id\" : 1, \"level\" : 3 } }}";
         MessageHandler messageHandler = new MessageHandler(consumer, "JSON");
 
         CustomMessage message = new CustomMessage(json.getBytes(), 0, 0);
