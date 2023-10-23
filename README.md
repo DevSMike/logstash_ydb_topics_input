@@ -27,6 +27,7 @@ input {
     topic_path => "topic_path"  
     connection_string => "grpc://localhost:2136?database=/local"
     consumer_name => "consumer_name"
+    schema => "JSON"
   }
 }
 
@@ -46,6 +47,7 @@ input {
     connection_string => "grpc://localhost:2136?database=/local"
     consumer_name => "consumer_name"
     access_token => "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOi"
+    schema => "JSON"
   }
 }
 
@@ -65,6 +67,7 @@ input {
     connection_string => "grpc://localhost:2136?database=/local"
     consumer_name => "consumer_name"
     service_account_key => "path/to/sa_file.json"
+    schema => "JSON"
   }
 }
 
